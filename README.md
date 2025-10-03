@@ -42,8 +42,8 @@ Un sistema completo de gestión de datos utilizando **Árboles AVL genéricos** 
 
 ### 1. Clonar el repositorio
 ```bash
-git clone https://github.com/tu-usuario/avl-tree-mongodb.git
-cd avl-tree-mongodb
+git clone https://github.com/Esaban17/BinaryTreeAVL.git
+cd BinaryTreeAVL
 ```
 
 ### 2. Configurar MongoDB
@@ -172,7 +172,7 @@ Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) par
 
 ## 👥 Autores
 
-- **Tu Nombre** - *Desarrollo inicial* - [tu-usuario](https://github.com/tu-usuario)
+- **Esaban17** - *Desarrollo inicial* - [Esaban17](https://github.com/Esaban17)
 
 ## 🙏 Agradecimientos
 
