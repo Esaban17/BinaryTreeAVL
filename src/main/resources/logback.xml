@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    
+    <!-- Console Appender -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+    
+    <!-- Silenciar logs de MongoDB (solo mostrar WARN y ERROR) -->
+    <logger name="org.mongodb.driver" level="WARN" />
+    <logger name="org.mongodb.driver.client" level="WARN" />
+    <logger name="org.mongodb.driver.cluster" level="WARN" />
+    <logger name="org.mongodb.driver.connection" level="WARN" />
+    <logger name="org.mongodb.driver.protocol" level="WARN" />
+    <logger name="org.mongodb.driver.operation" level="WARN" />
+    
+    <!-- Root logger level -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE" />
+    </root>
+    
+</configuration>

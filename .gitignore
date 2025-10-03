@@ -1,0 +1,219 @@
+# Archivos y directorios a ignorar
+
+# Archivos compilados de Java
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+
+# Log files
+*.log
+
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# IDE - IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+# IDE - Eclipse
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+.metadata
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+.recommenders
+.apt_generated
+.factorypath
+.springBeans
+.sts4-cache
+
+# IDE - VS Code
+.vscode/
+*.code-workspace
+.history/
+
+# IDE - NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# OS - Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.tmp
+*.temp
+*.bak
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# OS - macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+Icon
+.DocumentRevisions-V100
+.fseventsd
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# OS - Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# Environment variables (IMPORTANTE: nunca commitear credenciales)
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.h2.db
+*.trace.db
+*.hsqldb
+derby.log
+
+# MongoDB dump files
+dump/
+
+# Application logs
+application.log
+application-*.log
+spring.log
+spring-*.log
+
+# Test output
+test-results/
+test-output/
+junit*.properties
+*.lcov
+coverage/
+.nyc_output/
+allure-results/
+
+# Build tools and dependencies
+node_modules/
+.m2/repository/
+.cache/
+
+# IDE workspace files
+*.sublime-project
+*.sublime-workspace
+
+# JVM crash logs
+hs_err_pid*
+replay_pid*
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# Virtual machine crash logs
+hs_err_pid*
+
+# Package Files
+*.zip
+*.tar.gz
+*.rar
+
+# BlueJ files
+*.ctxt
+
+# Build outputs
+build/
+dist/
+out/
+
+# Temporary folders
+temp/
+tmp/
+
+# Backup files
+*.backup
+*.bak
+*.orig
+*.rej
+
+# Generated documentation
+docs/generated/
+javadoc/
+
+# Code analysis tools
+.sonar/
+spotbugs.xml
+checkstyle-result.xml
+pmd.xml
+jacoco.exec
+jacoco-it.exec
+jacoco.xml
+
+# Configuration files with sensitive data
+config/local.properties
+config/dev.properties
+config/production.properties
+secrets/
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Kubernetes
+k8s/secrets/
