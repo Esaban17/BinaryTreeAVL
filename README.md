@@ -1,53 +1,39 @@
-# 🌳 Sistema AVL Genérico con MongoDB
+# BinaryTreeAVL
 
-Un sistema completo de gestión de datos utilizando **Árboles AVL genéricos** con persistencia en **MongoDB Atlas**. Implementado en Java con características avanzadas de visualización y manejo de tipos genéricos.
+Sistema de gestion de datos utilizando **Arboles AVL genericos** con persistencia en **MongoDB Atlas**. Implementado en Java con visualizacion en consola y manejo de tipos genericos.
 
-![Java](https://img.shields.io/badge/Java-17-orange)
+![Java](https://img.shields.io/badge/Java-11+-orange)
 ![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green)
-![Maven](https://img.shields.io/badge/Maven-3.9.5-blue)
-![Status](https://img.shields.io/badge/Status-Production-success)
+![Maven](https://img.shields.io/badge/Maven-3.6+-blue)
 
-## 🚀 Características Principales
+## Caracteristicas
 
-### 🔧 **Arquitectura Genérica**
-- **Tipos genéricos**: `T extends Comparable<T>` para cualquier tipo de dato
-- **Interfaz Comparable**: Ordenamiento automático por criterio personalizable
-- **Ejemplo implementado**: Clase `Persona` ordenada por DPI
+- **Arbol AVL generico** (`T extends Comparable<T>`) con auto-balanceo y operaciones en O(log n)
+- **Operaciones CRUD** completas: insercion, busqueda, actualizacion y eliminacion
+- **Persistencia en MongoDB Atlas** con serializacion automatica via reflexion
+- **Visualizacion del arbol** en formato jerarquico ASCII, recorrido inorder y estadisticas
+- **Menu interactivo** por consola con validacion de datos
 
-### � **Árbol AVL Avanzado**
-- **Auto-balanceado**: Garantiza O(log n) en todas las operaciones
-- **Operaciones completas**: Inserción, búsqueda, eliminación, actualización
-- **Visualización múltiple**: Estructura jerárquica, recorrido inorder, estadísticas
+## Requisitos
 
-### �️ **Persistencia MongoDB**
-- **Serialización automática**: Reflexión para tipos genéricos
-- **MongoDB Atlas**: Integración con base de datos en la nube
-- **Sincronización bidireccional**: Carga y guardado automático
-- **Gestión de conexión robusta**: Sistema de reintentos y validación
+- **Java** JDK 11 o superior
+- **Maven** 3.6.0 o superior
+- **MongoDB Atlas** cuenta con cluster configurado
+- Conexion a Internet
 
-### 🎨 **Interfaz de Usuario**
-- **Menú interactivo**: Navegación intuitiva por consola
-- **Validación de datos**: Verificación automática de entrada
-- **Mensajes descriptivos**: Feedback claro con emojis
-- **Manejo de errores**: Recuperación elegante de fallos
-
-## 📋 Requisitos del Sistema
-
-- **Java**: JDK 17 o superior
-- **Maven**: 3.6.0 o superior
-- **MongoDB Atlas**: Cuenta con cluster configurado
-- **Conexión a Internet**: Para acceso a MongoDB Atlas
-
-## 🛠️ Instalación
+## Instalacion
 
 ### 1. Clonar el repositorio
+
 ```bash
 git clone https://github.com/Esaban17/BinaryTreeAVL.git
 cd BinaryTreeAVL
 ```
 
 ### 2. Configurar MongoDB
-Crear archivo `.env` en la raíz del proyecto:
+
+Crear un archivo `.env` en la raiz del proyecto (ver `.env.example` como referencia):
+
 ```env
 MONGODB_URI=mongodb+srv://usuario:password@cluster.mongodb.net/
 DATABASE_NAME=avltree_db
@@ -55,40 +41,35 @@ COLLECTION_NAME=nodes
 ```
 
 ### 3. Compilar y ejecutar
-```bash
-# Compilar el proyecto
-mvn clean compile package
 
-# Ejecutar la aplicación
+```bash
+mvn clean compile package
 java -jar target/binary-tree-avl-1.0.0.jar
 ```
 
-## 🎯 Uso del Sistema
+## Uso
 
-### Ejemplo de Uso Básico
-
-1. **Insertar personas** ordenadas automáticamente por DPI
-2. **Visualizar el árbol** en formato jerárquico
-3. **Buscar por DPI** con búsqueda O(log n)
-4. **Persistir en MongoDB** automáticamente
+Al ejecutar la aplicacion se presenta un menu interactivo:
 
 ```
-=== SISTEMA AVL GENÉRICO ===
+=== SISTEMA AVL GENERICO ===
 1. Insertar persona
-2. Actualizar persona  
+2. Actualizar persona
 3. Buscar persona por DPI
 4. Eliminar persona
-5. Graficar árbol
+5. Graficar arbol
 6. Operaciones de base de datos
-7. Información del árbol
+7. Informacion del arbol
 8. Mostrar todas las personas
 0. Salir
 ```
 
-### Ejemplo de Visualización del Árbol
+La implementacion de ejemplo usa la clase `Persona`, ordenada automaticamente por DPI (Documento Personal de Identificacion).
+
+### Visualizacion del arbol
 
 ```
-=== ESTRUCTURA JERÁRQUICA ===
+=== ESTRUCTURA JERARQUICA ===
 └── [Ana Rodriguez (45678901) (h:4)]
     ├── L:
     │   ├── [maria gonzalez (23456789) (h:2)]
@@ -106,80 +87,68 @@ java -jar target/binary-tree-avl-1.0.0.jar
                         └── [Isabel Ruiz (89012345) (h:1)]
 ```
 
-## 📁 Estructura del Proyecto
+## Estructura del proyecto
 
 ```
 src/main/java/com/avltree/
-├── Main.java                      # Punto de entrada con validación de conexión
+├── Main.java                          # Punto de entrada
 ├── controller/
-│   └── AVLTreeController.java     # Controlador principal del menú
+│   └── AVLTreeController.java         # Controlador del menu interactivo
 ├── model/
-│   ├── Node.java                  # Nodo genérico del árbol AVL
-│   └── Persona.java               # Clase de ejemplo con comparación por DPI
+│   ├── Node.java                      # Nodo generico del arbol AVL
+│   └── Persona.java                   # Modelo de ejemplo (comparable por DPI)
 ├── service/
-│   ├── AVLTree.java               # Implementación del árbol AVL genérico
-│   ├── MongoDBConnection.java     # Gestión de conexión con MongoDB
-│   └── TreePersistenceService.java # Serialización y persistencia genérica
+│   ├── AVLTree.java                   # Implementacion del arbol AVL
+│   ├── MongoDBConnection.java         # Conexion a MongoDB (Singleton)
+│   └── TreePersistenceService.java    # Serializacion y persistencia generica
 └── util/
-    ├── EnvLoader.java             # Carga de variables de entorno
-    └── TreeVisualizer.java        # Visualización del árbol
+    ├── EnvLoader.java                 # Carga de variables de entorno desde .env
+    └── TreeVisualizer.java            # Visualizacion ASCII del arbol
 ```
 
-## ⚡ Características Técnicas
+## Tecnologias
 
-### Algoritmos Implementados
-- **Rotaciones AVL**: Simple izquierda/derecha, doble izquierda/derecha
-- **Factor de balance**: Cálculo automático y rebalanceo
-- **Búsqueda binaria**: O(log n) en árbol balanceado
-- **Traversal**: Inorder, preorder, postorder
+| Componente   | Tecnologia             | Version |
+|-------------|------------------------|---------|
+| Lenguaje    | Java                   | 11+     |
+| Build       | Maven                  | 3.6+    |
+| Base de datos | MongoDB Atlas        | 4.0+    |
+| Driver      | MongoDB Java Driver    | 4.11.1  |
+| Logging     | SLF4J + Logback        | 1.7.36 / 1.2.12 |
+| Testing     | JUnit                  | 5.10.0  |
 
-### Patrones de Diseño
-- **Singleton**: Conexión MongoDB
-- **Template Method**: Serialización genérica
-- **Strategy**: Diferentes tipos de visualización
-- **Factory**: Creación de documentos MongoDB
+## Patrones de diseno
 
-## 🧪 Casos de Prueba
+- **Singleton**: conexion unica a MongoDB
+- **MVC**: separacion controlador / servicio / modelo
+- **Repository**: abstraccion de acceso a datos en `TreePersistenceService`
+- **Template Method**: serializacion generica mediante reflexion
 
-El sistema ha sido probado con:
-- ✅ Inserción masiva (1000+ registros)
-- ✅ Búsquedas con diferentes patrones
-- ✅ Eliminaciones manteniendo balance
-- ✅ Persistencia y recuperación completa
-- ✅ Manejo de conexiones intermitentes
+## Complejidad algoritmica
 
-## 🤝 Contribuciones
+| Operacion   | Complejidad |
+|-------------|-------------|
+| Insercion   | O(log n)    |
+| Busqueda    | O(log n)    |
+| Eliminacion | O(log n)    |
+| Recorrido   | O(n)        |
 
-Las contribuciones son bienvenidas. Por favor:
+Las rotaciones (simple y doble, izquierda y derecha) mantienen el factor de balance en el rango [-1, 1] garantizando la altura logaritmica del arbol.
+
+## Contribuciones
+
+Las contribuciones son bienvenidas. Consulta [CONTRIBUTING.md](CONTRIBUTING.md) para mas detalles.
 
 1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
+2. Crea una rama (`git checkout -b feature/mi-feature`)
+3. Commit tus cambios (`git commit -m 'Agregar mi feature'`)
+4. Push a la rama (`git push origin feature/mi-feature`)
 5. Abre un Pull Request
 
-## 🐛 Reporte de Problemas
+## Licencia
 
-Si encuentras un bug, por favor abre un issue con:
-- Descripción del problema
-- Pasos para reproducir
-- Resultado esperado vs. resultado actual
-- Información del entorno (Java version, OS, etc.)
+Este proyecto esta bajo la Licencia MIT. Ver [LICENSE](LICENSE) para mas detalles.
 
-## 📄 Licencia
+## Autor
 
-Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para detalles.
-
-## 👥 Autores
-
-- **Esaban17** - *Desarrollo inicial* - [Esaban17](https://github.com/Esaban17)
-
-## 🙏 Agradecimientos
-
-- Inspirado en algoritmos clásicos de estructuras de datos
-- MongoDB por su excelente documentación
-- Comunidad Java por las mejores prácticas
-
----
-
-⭐ **¡Si este proyecto te fue útil, no olvides darle una estrella!** ⭐
+- **Esaban17** - [GitHub](https://github.com/Esaban17)
