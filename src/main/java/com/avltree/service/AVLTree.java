@@ -207,20 +207,14 @@ public class AVLTree<T extends Comparable<T>> {
         } else {
             // Nodo con una sola hoja o sin hijos
             if ((root.getLeft() == null) || (root.getRight() == null)) {
-                Node<T> temp = null;
-                if (temp == root.getLeft()) {
-                    temp = root.getRight();
-                } else {
-                    temp = root.getLeft();
-                }
-                
+                Node<T> child = (root.getLeft() != null) ? root.getLeft() : root.getRight();
+
                 // Sin hijos
-                if (temp == null) {
-                    temp = root;
+                if (child == null) {
                     root = null;
                 } else {
                     // Un hijo
-                    root = temp;
+                    root = child;
                 }
             } else {
                 // Nodo con dos hijos: obtener el sucesor inorder

@@ -211,12 +211,18 @@ public class AVLTreeController {
                 return;
             }
             
+            boolean dpiChanged = !currentPersona.getDpi().equals(nuevaPersona.getDpi());
             boolean updated = tree.update(currentPersona, nuevaPersona);
             if (updated) {
                 System.out.println("✓ Persona actualizada exitosamente");
                 System.out.println("✓ " + nuevaPersona.getDetalle());
-                
-                // Actualizar en base de datos
+
+                // Eliminar registro anterior de BD si cambió el DPI
+                if (dpiChanged) {
+                    persistenceService.deleteNode(currentPersona);
+                }
+
+                // Guardar el registro actualizado en base de datos
                 Node<Persona> updatedNode = tree.search(nuevaPersona);
                 if (updatedNode != null) {
                     persistenceService.saveNode(updatedNode);

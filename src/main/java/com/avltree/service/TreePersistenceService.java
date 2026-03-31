@@ -246,8 +246,8 @@ public class TreePersistenceService<T extends Comparable<T>> {
         if (data == null) {
             return "null";
         }
-        // Usar el toString del objeto o su hashCode como identificador
-        return data.getClass().getSimpleName() + "_" + Math.abs(data.hashCode());
+        // Usar toString como base para un identificador determinista y sin colisiones
+        return data.getClass().getSimpleName() + "_" + data.toString().replaceAll("[^a-zA-Z0-9_]", "_");
     }
     
     /**
