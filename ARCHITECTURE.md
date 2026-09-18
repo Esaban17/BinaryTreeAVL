@@ -61,14 +61,14 @@ Este documento describe la arquitectura técnica del **Sistema AVL Genérico con
 ### 1. **Main.java** - Punto de Entrada
 ```java
 📋 Responsabilidades:
-├── Configuración de logging (Logback)
-├── Validación de conexión MongoDB
+├── Configuración de la salida de consola en UTF-8
+├── Validación de conexión MongoDB con reintentos
 ├── Inicialización del controlador
-└── Manejo de errores globales
+└── Cierre ordenado de recursos (shutdown hook)
 
-🔧 Patrones:
-├── Template Method (configuración)
-└── Error Handler (manejo centralizado)
+🔧 Notas:
+├── El nivel de log se define en logback.xml, no en código
+└── Los reintentos esperan RETRY_INTERVAL entre intentos
 ```
 
 ### 2. **AVLTreeController.java** - Controlador Principal
@@ -91,12 +91,16 @@ Este documento describe la arquitectura técnica del **Sistema AVL Genérico con
 ├── Operaciones CRUD del árbol
 ├── Algoritmos de balanceo AVL
 ├── Rotaciones (simple y doble)
-└── Traversals (inorder, preorder, postorder)
+└── Recorrido inorder
 
 🔧 Patrones:
 ├── Generic Programming (T extends Comparable<T>)
-├── Strategy Pattern (diferentes traversals)
 └── Template Method (operaciones recursivas)
+
+📤 Valores de retorno:
+├── insert() indica si creó un nodo o actualizó uno existente
+├── delete() indica si realmente eliminó algo
+└── update() devuelve UPDATED, NOT_FOUND o KEY_CONFLICT
 
 ⚖️ Algoritmos de Balanceo:
 ├── Factor de balance: height(left) - height(right)
@@ -115,30 +119,34 @@ Este documento describe la arquitectura técnica del **Sistema AVL Genérico con
 └── int height          // Altura para AVL
 
 🔧 Características:
-├── Immutable después de creación
-├── Comparable integration
-└── Thread-safe design
+├── Estructura de datos pura: no conoce MongoDB ni BSON
+├── Rechaza datos null en el constructor y en setData()
+└── Mutable y sin sincronización: no es seguro entre hilos
 ```
 
 ### 5. **TreePersistenceService<T>.java** - Persistencia Genérica
 ```java
 📋 Responsabilidades:
-├── Serialización Object → MongoDB Document
-├── Deserialización Document → Object
 ├── Operaciones CRUD en MongoDB
-└── Manejo de tipos genéricos con Reflection
+├── Guardado y carga del árbol completo
+├── Verificación de integridad árbol ↔ base de datos
+└── Delegación de la serialización al DocumentMapper
 
 🔧 Patrones:
 ├── Repository Pattern
-├── Data Access Object (DAO)
-├── Generic Programming
-└── Reflection para serialización
+├── Data Mapper (DocumentMapper)
+└── Generic Programming
 
 🛠️ Serialización:
-├── Introspección de campos con Reflection
-├── Conversión automática de tipos
-├── Preservación de jerarquía de objetos
-└── Manejo de tipos complejos (Comparable)
+├── Contrato explícito: id(), toDocument(), fromDocument()
+├── El _id proviene de la clave natural del dato, nunca de hashCode()
+├── Un documento corrupto se registra en el log, no desaparece en silencio
+└── Verificado por el compilador, no por reflexión en tiempo de ejecución
+
+💾 Guardado seguro:
+├── saveTree() escribe (upsert) todos los nodos
+├── y sólo después elimina los documentos obsoletos
+└── de modo que un fallo intermedio nunca vacía la colección
 ```
 
 ### 6. **MongoDBConnection.java** - Gestión de Conexión
@@ -150,15 +158,16 @@ Este documento describe la arquitectura técnica del **Sistema AVL Genérico con
 └── Pool de conexiones
 
 🔧 Patrones:
-├── Singleton (instancia única)
+├── Singleton (holder estático, seguro entre hilos)
 ├── Factory (creación de cliente)
 └── Retry Pattern (reconexión)
 
-⚙️ Configuración:
-├── Connection timeout: 10s
-├── Socket timeout: 10s
-├── Max retries: 3
-└── SSL/TLS habilitado
+⚙️ Configuración (todas ajustables por .env o variable de entorno):
+├── CONNECTION_TIMEOUT: 10000 ms por defecto
+├── SOCKET_TIMEOUT: 10000 ms por defecto
+├── MAX_CONNECTION_RETRIES: 5 por defecto
+├── RETRY_INTERVAL: 2000 ms por defecto
+└── SSL/TLS según la URI de conexión
 ```
 
 ## 🎯 Patrones de Diseño Implementados
@@ -177,20 +186,18 @@ public class AVLTree<T extends Comparable<T>> {
 
 ### 2. **Singleton Pattern**
 ```java
-// Una sola instancia de conexión MongoDB
+// Una sola instancia de conexión MongoDB.
+// El modismo del holder estático delega la exclusión mutua al cargador de
+// clases: la instancia se crea la primera vez que se toca Holder, sin
+// sincronización explícita ni doble comprobación.
 public class MongoDBConnection {
-    private static volatile MongoDBConnection instance;
-    private MongoClient mongoClient;
-    
+
+    private static final class Holder {
+        private static final MongoDBConnection INSTANCE = new MongoDBConnection();
+    }
+
     public static MongoDBConnection getInstance() {
-        if (instance == null) {
-            synchronized (MongoDBConnection.class) {
-                if (instance == null) {
-                    instance = new MongoDBConnection();
-                }
-            }
-        }
-        return instance;
+        return Holder.INSTANCE;
     }
 }
 ```
@@ -213,33 +220,30 @@ private Node<T> insertRec(Node<T> node, T data) {
 }
 ```
 
-### 4. **Strategy Pattern**
+### 4. **Data Mapper Pattern**
 ```java
-// Diferentes estrategias de visualización
-public enum TraversalType {
-    INORDER,
-    PREORDER,
-    POSTORDER,
-    LEVEL_ORDER
-}
-
-public void traverse(TraversalType type) {
-    switch(type) {
-        case INORDER -> inorderTraversal(root);
-        case PREORDER -> preorderTraversal(root);
-        // ...
-    }
+// La traducción entre dominio y BSON vive fuera del modelo y del árbol.
+// Sustituye a la serialización por reflexión, donde un tipo sin los métodos
+// esperados fallaba en silencio y el nodo se perdía.
+public interface DocumentMapper<T extends Comparable<T>> {
+    String id(T data);                  // clave natural, nunca hashCode()
+    Document toDocument(T data);
+    T fromDocument(Document document);
 }
 ```
 
 ### 5. **Repository Pattern**
 ```java
-// Abstracción de la persistencia de datos
-public interface TreeRepository<T> {
-    void save(AVLTree<T> tree);
-    AVLTree<T> load();
-    void delete(T data);
-    boolean exists(T data);
+// Abstracción de la persistencia de datos, implementada por
+// TreePersistenceService<T>. Devuelve el resultado de cada operación para
+// que la capa de presentación pueda informar al usuario.
+public class TreePersistenceService<T extends Comparable<T>> {
+    public int saveTree();                        // nodos guardados, o -1 si falló
+    public int loadTree();                        // nodos cargados, o -1 si falló
+    public boolean saveData(T data);
+    public boolean replaceData(T oldData, T newData);
+    public boolean deleteData(T data);
+    public IntegrityReport verifyIntegrity();
 }
 ```
 
@@ -261,9 +265,9 @@ Usuario → Controller → AVLTree → Búsqueda O(log n) → Resultado
 
 ### Persistencia
 ```
-Memoria → TreePersistenceService → Reflection → Document → MongoDB
-   ↑              ↓                     ↓          ↓         ↓
-AVLTree      Serialización         Introspección  BSON    Storage
+Memoria → TreePersistenceService → DocumentMapper → Document → MongoDB
+   ↑              ↓                       ↓             ↓          ↓
+AVLTree    Recolección de nodos    id() + toDocument()  BSON     Storage
 ```
 
 ## 📊 Complejidad Computacional
@@ -279,61 +283,79 @@ AVLTree      Serialización         Introspección  BSON    Storage
 ### Operaciones de Persistencia
 | Operación | Tiempo | Espacio | Justificación |
 |-----------|--------|---------|---------------|
-| Serializar | O(n) | O(n) | Reflection en todos los nodos |
+| Serializar | O(n) | O(n) | DocumentMapper en todos los nodos |
 | Guardar | O(n) | O(n) | Escritura a MongoDB |
 | Cargar | O(n log n) | O(n) | Inserción ordenada |
 
 ## 🧪 Estrategias de Testing
 
+La suite vive en `src/test/java/com/avltree/` y se ejecuta con `mvn test`.
+Actualmente son 76 pruebas y no requieren una instancia de MongoDB.
+
 ### 1. **Unit Testing**
 ```java
-// Testing de operaciones individuales
+// Cada caso de rotación, verificado sobre la estructura resultante
 @Test
-void testInsertMaintainsAVLProperty() {
-    AVLTree<Integer> tree = new AVLTree<>();
+void casoIzquierdaDerecha() {
+    tree.insert(30);
     tree.insert(10);
-    tree.insert(5);
-    tree.insert(15);
-    
-    assertTrue(tree.isBalanced());
+    tree.insert(20);
+
+    assertEquals(20, tree.getRoot().getData());
+    assertEsAvlValido(tree);
 }
 ```
 
-### 2. **Integration Testing**
+### 2. **Property-Based Testing**
 ```java
-// Testing de persistencia completa
+// El árbol debe comportarse exactamente como un TreeSet ante cualquier
+// secuencia de operaciones. Tras cada operación se comprueban las tres
+// invariantes: orden inorder, factor de balance y alturas almacenadas.
 @Test
-void testSaveAndLoad() {
-    AVLTree<Persona> original = createTestTree();
-    persistenceService.save(original);
-    
-    AVLTree<Persona> loaded = persistenceService.load();
-    assertEquals(original.size(), loaded.size());
-}
-```
+void equivaleAUnTreeSet() {
+    for (int ronda = 0; ronda < 50; ronda++) {
+        AVLTree<Integer> avl = new AVLTree<>();
+        TreeSet<Integer> referencia = new TreeSet<>();
 
-### 3. **Performance Testing**
-```java
-// Testing de rendimiento con grandes volúmenes
-@Test
-void testLargeVolumeInsert() {
-    AVLTree<Integer> tree = new AVLTree<>();
-    long startTime = System.currentTimeMillis();
-    
-    for (int i = 0; i < 100000; i++) {
-        tree.insert(i);
+        for (int operacion = 0; operacion < 400; operacion++) {
+            int valor = random.nextInt(120);
+            if (random.nextBoolean()) {
+                assertEquals(referencia.add(valor), avl.insert(valor));
+            } else {
+                assertEquals(referencia.remove(valor), avl.delete(valor));
+            }
+            assertEsAvlValido(avl);
+        }
+
+        assertEquals(new ArrayList<>(referencia), avl.toSortedList());
     }
-    
-    long duration = System.currentTimeMillis() - startTime;
-    assertTrue(duration < 5000); // Menos de 5 segundos
 }
 ```
+
+### 3. **Pruebas de regresión**
+```java
+// Los identificadores basados en hashCode producían colisiones reales y una
+// persona sobrescribía a otra. Esta prueba fija ese caso concreto.
+@Test
+void colisionConocidaDeHashCodeYaNoProduceElMismoIdentificador() {
+    Persona una  = new Persona("Ana",  "López", 30, "7572515731943");
+    Persona otra = new Persona("Beto", "Ruiz",  40, "4086513132424");
+
+    assertEquals(una.hashCode(), otra.hashCode());
+    assertNotEquals(mapper.id(una), mapper.id(otra));
+}
+```
+
+### 4. **Pendiente: Integration Testing**
+La capa de persistencia todavía no se prueba contra una base de datos real.
+La forma natural de cubrirla sería Testcontainers con una imagen de MongoDB,
+verificando el ciclo completo de guardar, cargar y reemplazar registros.
 
 ## 🚀 Optimizaciones Implementadas
 
-### 1. **Lazy Loading**
-- Los datos se cargan de MongoDB solo cuando se necesitan
-- Evita cargar el árbol completo en memoria al inicio
+### 1. **Carga Única al Inicio**
+- El árbol se carga completo de MongoDB al arrancar y se opera en memoria
+- Las lecturas posteriores no tocan la red: son O(log n) sobre el árbol
 
 ### 2. **Connection Pooling**
 - Reutilización de conexiones MongoDB
@@ -343,9 +365,9 @@ void testLargeVolumeInsert() {
 - Almacenamiento de altura en cada nodo
 - Evita recálculos costosos durante balanceo
 
-### 4. **Serialización Optimizada**
-- Uso de Reflection cacheable
-- Conversión directa a BSON cuando es posible
+### 4. **Serialización Directa**
+- Conversión explícita a BSON mediante DocumentMapper, sin reflexión
+- Escrituras en bloque (bulkWrite) al guardar el árbol completo
 
 ## 🔧 Configuración y Extensibilidad
 
@@ -361,12 +383,27 @@ public class Producto implements Comparable<Producto> {
     }
 }
 
-// 2. Crear instancia del árbol
-AVLTree<Producto> inventario = new AVLTree<>();
+// 2. Implementar el DocumentMapper correspondiente
+public class ProductoMapper implements DocumentMapper<Producto> {
+    @Override
+    public String id(Producto producto) {
+        return "producto_" + producto.getCodigo();   // clave natural
+    }
 
-// 3. Usar con el mismo controller
-AVLTreeController<Producto> controller = 
-    new AVLTreeController<>(inventario, persistenceService);
+    @Override
+    public Document toDocument(Producto producto) { /* ... */ }
+
+    @Override
+    public Producto fromDocument(Document documento) { /* ... */ }
+}
+
+// 3. Crear el árbol y su servicio de persistencia
+AVLTree<Producto> inventario = new AVLTree<>();
+TreePersistenceService<Producto> persistencia =
+        new TreePersistenceService<>(inventario, new ProductoMapper());
+
+// Nota: AVLTreeController está especializado en Persona. Reutilizarlo con
+// otro tipo requiere generalizarlo o escribir un controlador equivalente.
 ```
 
 ### Personalizar Criterios de Ordenamiento

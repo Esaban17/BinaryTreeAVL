@@ -24,34 +24,35 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Verificar si existe el archivo .env
+# Verificar la configuración: archivo .env o variable de entorno
 if (-Not (Test-Path ".env")) {
-    Write-Host "❌ Archivo .env no encontrado" -ForegroundColor Red
-    Write-Host "Por favor, configure el archivo .env con sus credenciales de MongoDB Atlas" -ForegroundColor Yellow
-    Write-Host "Ejemplo:" -ForegroundColor Cyan
-    Write-Host "MONGODB_URI=mongodb+srv://usuario:password@cluster.mongodb.net/avltree?retryWrites=true&w=majority" -ForegroundColor Cyan
-    Write-Host "DATABASE_NAME=avltree" -ForegroundColor Cyan
-    Write-Host "COLLECTION_NAME=nodes" -ForegroundColor Cyan
-    exit 1
+    if (-Not $env:MONGODB_URI) {
+        Write-Host "❌ No se encontró configuración de MongoDB" -ForegroundColor Red
+        Write-Host "Cree un archivo .env (vea .env.example) o defina la variable MONGODB_URI" -ForegroundColor Yellow
+        Write-Host "Ejemplo:" -ForegroundColor Cyan
+        Write-Host "MONGODB_URI=mongodb+srv://usuario:password@cluster.mongodb.net/avltree?retryWrites=true&w=majority" -ForegroundColor Cyan
+        exit 1
+    }
+    Write-Host "✓ Usando MONGODB_URI de las variables de entorno" -ForegroundColor Green
 }
 
 echo ""
 echo "✓ Prerequisitos verificados"
 echo ""
 
-# Compilar el proyecto
-echo "Compilando el proyecto..."
-mvn clean compile
+# Compilar y probar el proyecto
+echo "Compilando y ejecutando las pruebas..."
+mvn clean verify
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Error al compilar el proyecto" -ForegroundColor Red
+    Write-Host "❌ Error al compilar o probar el proyecto" -ForegroundColor Red
     exit 1
 }
 
 echo ""
-echo "✓ Compilación exitosa"
+echo "✓ Compilación y pruebas exitosas"
 echo ""
 
 # Ejecutar la aplicación
 echo "Iniciando la aplicación..."
 echo "======================================"
-mvn exec:java -Dexec.mainClass="com.avltree.Main"
+mvn exec:java
