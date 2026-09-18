@@ -25,38 +25,39 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-REM Verificar si existe el archivo .env
+REM Verificar la configuracion: archivo .env o variable de entorno
 if not exist ".env" (
-    echo ❌ Archivo .env no encontrado
-    echo Por favor, configure el archivo .env con sus credenciales de MongoDB Atlas
-    echo Ejemplo:
-    echo MONGODB_URI=mongodb+srv://usuario:password@cluster.mongodb.net/avltree?retryWrites=true^&w=majority
-    echo DATABASE_NAME=avltree
-    echo COLLECTION_NAME=nodes
-    pause
-    exit /b 1
+    if "%MONGODB_URI%"=="" (
+        echo ❌ No se encontro configuracion de MongoDB
+        echo Cree un archivo .env (vea .env.example^) o defina la variable MONGODB_URI
+        echo Ejemplo:
+        echo MONGODB_URI=mongodb+srv://usuario:password@cluster.mongodb.net/avltree?retryWrites=true^&w=majority
+        pause
+        exit /b 1
+    )
+    echo ✓ Usando MONGODB_URI de las variables de entorno
 )
 
 echo.
 echo ✓ Prerequisitos verificados
 echo.
 
-REM Compilar el proyecto
-echo Compilando el proyecto...
-mvn clean compile
+REM Compilar y probar el proyecto
+echo Compilando y ejecutando las pruebas...
+mvn clean verify
 if %errorlevel% neq 0 (
-    echo ❌ Error al compilar el proyecto
+    echo ❌ Error al compilar o probar el proyecto
     pause
     exit /b 1
 )
 
 echo.
-echo ✓ Compilación exitosa
+echo ✓ Compilacion y pruebas exitosas
 echo.
 
 REM Ejecutar la aplicación
 echo Iniciando la aplicación...
 echo ======================================
-mvn exec:java -Dexec.mainClass="com.avltree.Main"
+mvn exec:java
 
 pause

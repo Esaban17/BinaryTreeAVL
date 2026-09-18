@@ -93,7 +93,7 @@ mvn clean install
 mvn test
 
 # 5. Ejecutar la aplicación
-mvn exec:java -Dexec.mainClass="com.avltree.Main"
+mvn exec:java
 ```
 
 ### Configuración del IDE
@@ -323,7 +323,7 @@ Cualquier contexto adicional sobre la feature request.
 
 ### 🧪 **Testing**
 - Nuevos casos de prueba
-- Tests de integración
+- Tests de integración (Testcontainers con MongoDB)
 - Tests de rendimiento
 - Cobertura de código
 
@@ -339,7 +339,7 @@ Cualquier contexto adicional sobre la feature request.
 - [ ] Agregar más ejemplos de uso
 - [ ] Mejorar mensajes de error
 - [ ] Añadir validaciones de entrada
-- [ ] Escribir tests unitarios
+- [x] Escribir tests unitarios
 
 ### Intermedio
 - [ ] Implementar nuevas operaciones del árbol

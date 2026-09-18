@@ -1,288 +1,341 @@
 package com.avltree.service;
 
 import com.avltree.model.Node;
-import org.bson.Document;
 import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoCursor;
-import static com.mongodb.client.model.Filters.*;
+import com.mongodb.client.model.ReplaceOneModel;
+import com.mongodb.client.model.ReplaceOptions;
+import com.mongodb.client.model.WriteModel;
+import org.bson.Document;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+
+import static com.mongodb.client.model.Filters.eq;
+import static com.mongodb.client.model.Filters.nin;
 
 /**
- * Servicio genérico para manejar la persistencia del árbol AVL en MongoDB
+ * Persistencia del árbol AVL en MongoDB.
+ *
+ * <p>Los identificadores de los documentos provienen del {@link DocumentMapper},
+ * es decir de la clave natural del dato. Los métodos devuelven el resultado de
+ * cada operación para que la capa de presentación pueda informar al usuario; los
+ * detalles técnicos van al log, no a la consola.
+ *
  * @param <T> tipo de dato que debe implementar Comparable
  */
 public class TreePersistenceService<T extends Comparable<T>> {
-    private MongoDBConnection mongoConnection;
-    private MongoCollection<Document> collection;
-    private AVLTree<T> tree;
-    private Class<T> clazz;
-    
-    public TreePersistenceService(AVLTree<T> tree, Class<T> clazz) {
+
+    private static final Logger log = LoggerFactory.getLogger(TreePersistenceService.class);
+
+    private final MongoDBConnection mongoConnection;
+    private final AVLTree<T> tree;
+    private final DocumentMapper<T> mapper;
+
+    public TreePersistenceService(AVLTree<T> tree, DocumentMapper<T> mapper) {
         this.tree = tree;
-        this.clazz = clazz;
+        this.mapper = mapper;
         this.mongoConnection = MongoDBConnection.getInstance();
-        this.collection = mongoConnection.getCollection();
     }
-    
+
+    private MongoCollection<Document> collection() {
+        return mongoConnection.getCollection();
+    }
+
     /**
-     * Guarda todo el árbol en MongoDB
+     * Guarda el árbol completo en MongoDB.
+     *
+     * <p>Primero escribe (upsert) todos los nodos y sólo después borra los
+     * documentos que ya no están en el árbol. De esa forma un fallo a mitad de
+     * camino nunca deja la colección vacía, a diferencia de borrar antes de
+     * escribir.
+     *
+     * @return número de nodos guardados, o -1 si la operación falló
      */
-    public boolean saveTree() {
+    public int saveTree() {
         try {
-            // Limpiar la colección antes de guardar
-            collection.deleteMany(new Document());
-            
-            if (tree.getRoot() == null) {
-                System.out.println("El árbol está vacío, no hay nada que guardar");
-                return true;
+            List<Document> documentos = new ArrayList<>();
+            Set<Object> identificadores = new HashSet<>();
+            collectNodes(tree.getRoot(), documentos, identificadores);
+
+            if (documentos.isEmpty()) {
+                long borrados = collection().deleteMany(new Document()).getDeletedCount();
+                log.info("Árbol vacío: se eliminaron {} documentos remanentes", borrados);
+                return 0;
             }
-            
-            // Convertir árbol a lista de documentos
-            List<Document> documents = new ArrayList<>();
-            collectNodes(tree.getRoot(), documents);
-            
-            // Insertar documentos en MongoDB
-            if (!documents.isEmpty()) {
-                collection.insertMany(documents);
-                System.out.println("✓ Árbol guardado exitosamente en MongoDB");
-                System.out.println("✓ Nodos guardados: " + documents.size());
-                return true;
+
+            List<WriteModel<Document>> operaciones = new ArrayList<>(documentos.size());
+            ReplaceOptions upsert = new ReplaceOptions().upsert(true);
+            for (Document doc : documentos) {
+                operaciones.add(new ReplaceOneModel<>(eq("_id", doc.get("_id")), doc, upsert));
             }
-            
+
+            collection().bulkWrite(operaciones);
+
+            // Ya están escritos todos los nodos vigentes: ahora sí es seguro
+            // eliminar los documentos que quedaron huérfanos.
+            long huerfanos = collection().deleteMany(nin("_id", identificadores)).getDeletedCount();
+            log.info("Árbol guardado: {} nodos, {} documentos obsoletos eliminados",
+                    documentos.size(), huerfanos);
+
+            return documentos.size();
+
         } catch (Exception e) {
-            System.err.println("Error al guardar el árbol: " + e.getMessage());
-            return false;
+            log.error("Error al guardar el árbol en MongoDB", e);
+            return -1;
         }
-        return false;
     }
-    
+
     /**
-     * Carga el árbol desde MongoDB
+     * Carga el árbol desde MongoDB, reemplazando el contenido en memoria.
+     *
+     * @return número de nodos cargados, o -1 si la operación falló
      */
-    public boolean loadTree() {
+    public int loadTree() {
         try {
-            // Limpiar árbol actual
-            tree.setRoot(null);
-            
-            // Obtener todos los documentos de la colección
-            MongoCursor<Document> cursor = collection.find().iterator();
-            int loadedNodes = 0;
-            
-            try {
-                while (cursor.hasNext()) {
-                    Document doc = cursor.next();
-                    Node<T> node = Node.fromDocument(doc, clazz);
-                    if (node != null) {
-                        tree.insert(node.getData());
-                        loadedNodes++;
+            tree.clear();
+
+            int cargados = 0;
+            int descartados = 0;
+
+            for (Document doc : collection().find()) {
+                try {
+                    T data = mapper.fromDocument((Document) doc.get("data"));
+                    if (data == null) {
+                        descartados++;
+                        continue;
                     }
+                    tree.insert(data);
+                    cargados++;
+                } catch (RuntimeException e) {
+                    descartados++;
+                    log.warn("Documento ignorado por no poder deserializarse (_id={}): {}",
+                            doc.get("_id"), e.getMessage());
                 }
-            } finally {
-                cursor.close();
             }
-            
-            if (loadedNodes > 0) {
-                System.out.println("✓ Árbol cargado exitosamente desde MongoDB");
-                System.out.println("✓ Nodos cargados: " + loadedNodes);
-                return true;
-            } else {
-                System.out.println("No se encontraron datos en MongoDB");
-                return false;
+
+            if (descartados > 0) {
+                log.warn("Se ignoraron {} documentos corruptos o incompletos", descartados);
             }
-            
+            log.info("Árbol cargado desde MongoDB: {} nodos", cargados);
+            return cargados;
+
         } catch (Exception e) {
-            System.err.println("❌ Error al cargar el árbol: " + e.getMessage());
-            return false;
+            log.error("Error al cargar el árbol desde MongoDB", e);
+            return -1;
         }
     }
-    
+
     /**
-     * Guarda un nodo específico en MongoDB
+     * Guarda o actualiza un único nodo.
      */
     public boolean saveNode(Node<T> node) {
+        if (node == null) {
+            return false;
+        }
+        return saveData(node.getData());
+    }
+
+    /**
+     * Guarda o actualiza un único dato.
+     */
+    public boolean saveData(T data) {
         try {
-            Document doc = node.toDocument();
-            
-            // Crear un identificador único basado en el objeto
-            String identifier = generateIdentifier(node.getData());
-            doc.append("_id", identifier);
-            
-            // Verificar si el nodo ya existe
-            Document existingNode = collection.find(eq("_id", identifier)).first();
-            
-            if (existingNode != null) {
-                // Actualizar nodo existente
-                collection.replaceOne(eq("_id", identifier), doc);
-                System.out.println("✓ Nodo actualizado en MongoDB: " + identifier);
+            String identificador = mapper.id(data);
+            Document doc = documentoDe(data, identificador);
+            collection().replaceOne(eq("_id", identificador), doc, new ReplaceOptions().upsert(true));
+            log.info("Nodo guardado en MongoDB: {}", identificador);
+            return true;
+        } catch (Exception e) {
+            log.error("Error al guardar el nodo en MongoDB", e);
+            return false;
+        }
+    }
+
+    /**
+     * Reemplaza un dato por otro cuya clave cambió.
+     *
+     * <p>Escribe el nuevo documento y elimina el anterior. Sin esto, cambiar la
+     * clave de un registro dejaba el documento viejo huérfano en la base y la
+     * versión anterior reaparecía en la siguiente carga.
+     */
+    public boolean replaceData(T oldData, T newData) {
+        try {
+            String idNuevo = mapper.id(newData);
+            String idViejo = mapper.id(oldData);
+
+            collection().replaceOne(eq("_id", idNuevo), documentoDe(newData, idNuevo),
+                    new ReplaceOptions().upsert(true));
+
+            if (!idViejo.equals(idNuevo)) {
+                long borrados = collection().deleteOne(eq("_id", idViejo)).getDeletedCount();
+                log.info("Nodo reemplazado en MongoDB: {} -> {} (documentos antiguos eliminados: {})",
+                        idViejo, idNuevo, borrados);
             } else {
-                // Insertar nuevo nodo
-                collection.insertOne(doc);
-                System.out.println("✓ Nodo guardado en MongoDB: " + identifier);
+                log.info("Nodo actualizado en MongoDB: {}", idNuevo);
             }
             return true;
-            
+
         } catch (Exception e) {
-            System.err.println("Error al guardar el nodo: " + e.getMessage());
+            log.error("Error al reemplazar el nodo en MongoDB", e);
             return false;
         }
     }
-    
+
     /**
-     * Elimina un nodo específico de MongoDB
+     * Elimina un dato de MongoDB.
+     *
+     * @return true si se eliminó algún documento
      */
-    public boolean deleteNode(T data) {
+    public boolean deleteData(T data) {
         try {
-            String identifier = generateIdentifier(data);
-            long deletedCount = collection.deleteOne(eq("_id", identifier)).getDeletedCount();
-            
-            if (deletedCount > 0) {
-                System.out.println("✓ Nodo eliminado de MongoDB: " + identifier);
+            String identificador = mapper.id(data);
+            long eliminados = collection().deleteOne(eq("_id", identificador)).getDeletedCount();
+            if (eliminados > 0) {
+                log.info("Nodo eliminado de MongoDB: {}", identificador);
                 return true;
-            } else {
-                System.out.println("⚠ No se encontró el nodo en MongoDB: " + identifier);
-                return false;
             }
-            
+            log.warn("No se encontró el nodo en MongoDB: {}", identificador);
+            return false;
         } catch (Exception e) {
-            System.err.println("❌ Error al eliminar el nodo: " + e.getMessage());
+            log.error("Error al eliminar el nodo de MongoDB", e);
             return false;
         }
     }
-    
+
     /**
-     * Busca un nodo en MongoDB
+     * Busca un dato directamente en MongoDB, sin pasar por el árbol.
      */
-    public Node<T> findNodeInDB(T data) {
+    public T findInDatabase(T data) {
         try {
-            String identifier = generateIdentifier(data);
-            Document doc = collection.find(eq("_id", identifier)).first();
-            
-            if (doc != null) {
-                return Node.fromDocument(doc, clazz);
-            } else {
+            Document doc = collection().find(eq("_id", mapper.id(data))).first();
+            if (doc == null) {
                 return null;
             }
-            
+            return mapper.fromDocument((Document) doc.get("data"));
         } catch (Exception e) {
-            System.err.println("❌ Error al buscar el nodo: " + e.getMessage());
+            log.error("Error al buscar el nodo en MongoDB", e);
             return null;
         }
     }
-    
+
     /**
-     * Sincroniza el árbol en memoria con MongoDB
+     * Número de documentos almacenados, o -1 si no se pudo consultar.
      */
-    public boolean syncWithDatabase() {
+    public long countDocuments() {
         try {
-            System.out.println("Sincronizando árbol con base de datos...");
-            
-            // Primero cargar desde la base de datos
-            boolean loaded = loadTree();
-            
-            if (loaded) {
-                System.out.println("✓ Sincronización completada");
-                return true;
-            } else {
-                System.out.println("⚠ No había datos para sincronizar");
-                return false;
-            }
-            
+            return collection().countDocuments();
         } catch (Exception e) {
-            System.err.println("❌ Error durante la sincronización: " + e.getMessage());
-            return false;
+            log.error("Error al contar los documentos en MongoDB", e);
+            return -1;
         }
     }
-    
+
     /**
-     * Obtiene estadísticas de la base de datos
+     * Elimina todos los datos de la colección.
+     *
+     * @return número de documentos eliminados, o -1 si la operación falló
      */
-    public void printDatabaseStats() {
+    public long clearDatabase() {
         try {
-            long totalNodes = collection.countDocuments();
-            System.out.println("\n=== ESTADÍSTICAS DE LA BASE DE DATOS ===");
-            System.out.println("Total de nodos en MongoDB: " + totalNodes);
-            
-            mongoConnection.printConnectionStats();
-            
+            long eliminados = collection().deleteMany(new Document()).getDeletedCount();
+            log.info("Base de datos limpiada: {} documentos eliminados", eliminados);
+            return eliminados;
         } catch (Exception e) {
-            System.err.println("❌ Error al obtener estadísticas: " + e.getMessage());
+            log.error("Error al limpiar la base de datos", e);
+            return -1;
         }
     }
-    
+
     /**
-     * Elimina todos los datos de la base de datos
+     * Compara el árbol en memoria contra la base de datos.
+     *
+     * @return el detalle de la comparación
      */
-    public boolean clearDatabase() {
+    public IntegrityReport verifyIntegrity() {
         try {
-            long deletedCount = collection.deleteMany(new Document()).getDeletedCount();
-            System.out.println("✓ Base de datos limpiada. Documentos eliminados: " + deletedCount);
-            return true;
-            
-        } catch (Exception e) {
-            System.err.println("❌ Error al limpiar la base de datos: " + e.getMessage());
-            return false;
-        }
-    }
-    
-    /**
-     * Recolecta todos los nodos del árbol en una lista de documentos
-     */
-    private void collectNodes(Node<T> node, List<Document> documents) {
-        if (node != null) {
-            Document doc = node.toDocument();
-            // Agregar identificador único
-            doc.append("_id", generateIdentifier(node.getData()));
-            documents.add(doc);
-            collectNodes(node.getLeft(), documents);
-            collectNodes(node.getRight(), documents);
-        }
-    }
-    
-    /**
-     * Genera un identificador único para un objeto
-     */
-    private String generateIdentifier(T data) {
-        if (data == null) {
-            return "null";
-        }
-        // Usar el toString del objeto o su hashCode como identificador
-        return data.getClass().getSimpleName() + "_" + Math.abs(data.hashCode());
-    }
-    
-    /**
-     * Verifica la integridad de los datos entre el árbol y la base de datos
-     */
-    public boolean verifyIntegrity() {
-        try {
-            List<Node<T>> treeNodes = tree.inorderTraversal();
-            long dbNodeCount = collection.countDocuments();
-            
-            System.out.println("\n=== VERIFICACIÓN DE INTEGRIDAD ===");
-            System.out.println("Nodos en árbol: " + treeNodes.size());
-            System.out.println("Nodos en base de datos: " + dbNodeCount);
-            
-            if (treeNodes.size() != dbNodeCount) {
-                System.out.println("⚠ Inconsistencia detectada en el número de nodos");
-                return false;
-            }
-            
-            // Verificar que cada nodo del árbol existe en la base de datos
-            for (Node<T> node : treeNodes) {
-                String identifier = generateIdentifier(node.getData());
-                Document dbNode = collection.find(eq("_id", identifier)).first();
-                if (dbNode == null) {
-                    System.out.println("⚠ Nodo " + identifier + " no encontrado en base de datos");
-                    return false;
+            List<Node<T>> nodos = tree.inorderTraversal();
+            long enBaseDeDatos = collection().countDocuments();
+
+            List<String> faltantes = new ArrayList<>();
+            for (Node<T> node : nodos) {
+                String identificador = mapper.id(node.getData());
+                if (collection().find(eq("_id", identificador)).first() == null) {
+                    faltantes.add(identificador);
                 }
             }
-            
-            System.out.println("✓ Integridad verificada correctamente");
-            return true;
-            
+
+            return new IntegrityReport(nodos.size(), enBaseDeDatos, faltantes, null);
+
         } catch (Exception e) {
-            System.err.println("❌ Error durante la verificación: " + e.getMessage());
-            return false;
+            log.error("Error durante la verificación de integridad", e);
+            return new IntegrityReport(tree.size(), -1, new ArrayList<>(), e.getMessage());
+        }
+    }
+
+    private Document documentoDe(T data, String identificador) {
+        return new Document("_id", identificador)
+                .append("data", mapper.toDocument(data));
+    }
+
+    /**
+     * Recolecta los nodos del árbol como documentos listos para escribir.
+     *
+     * @throws IllegalStateException si dos nodos generan el mismo identificador
+     */
+    private void collectNodes(Node<T> node, List<Document> documentos, Set<Object> identificadores) {
+        if (node == null) {
+            return;
+        }
+        String identificador = mapper.id(node.getData());
+        if (!identificadores.add(identificador)) {
+            throw new IllegalStateException(
+                    "Dos nodos distintos generan el mismo identificador '" + identificador
+                            + "'. Guardar sobrescribiría uno de ellos.");
+        }
+        documentos.add(documentoDe(node.getData(), identificador));
+        collectNodes(node.getLeft(), documentos, identificadores);
+        collectNodes(node.getRight(), documentos, identificadores);
+    }
+
+    /** Resultado de {@link #verifyIntegrity()}. */
+    public static class IntegrityReport {
+        private final int nodosEnArbol;
+        private final long nodosEnBaseDeDatos;
+        private final List<String> identificadoresFaltantes;
+        private final String error;
+
+        IntegrityReport(int nodosEnArbol, long nodosEnBaseDeDatos,
+                        List<String> identificadoresFaltantes, String error) {
+            this.nodosEnArbol = nodosEnArbol;
+            this.nodosEnBaseDeDatos = nodosEnBaseDeDatos;
+            this.identificadoresFaltantes = identificadoresFaltantes;
+            this.error = error;
+        }
+
+        public int getNodosEnArbol() {
+            return nodosEnArbol;
+        }
+
+        public long getNodosEnBaseDeDatos() {
+            return nodosEnBaseDeDatos;
+        }
+
+        public List<String> getIdentificadoresFaltantes() {
+            return identificadoresFaltantes;
+        }
+
+        public String getError() {
+            return error;
+        }
+
+        public boolean isOk() {
+            return error == null
+                    && identificadoresFaltantes.isEmpty()
+                    && nodosEnArbol == nodosEnBaseDeDatos;
         }
     }
 }
