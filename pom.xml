@@ -25,6 +25,7 @@
         <junit.version>5.10.0</junit.version>
         <slf4j.version>1.7.36</slf4j.version>
         <logback.version>1.2.12</logback.version>
+        <exec.plugin.version>3.1.1</exec.plugin.version>
     </properties>
 
     <dependencies>
@@ -102,10 +103,14 @@
                 <version>3.1.2</version>
                 <configuration>
                     <useModulePath>false</useModulePath>
+                    <argLine>-Dfile.encoding=UTF-8</argLine>
                 </configuration>
             </plugin>
 
             <!-- JAR Plugin -->
+            <!-- Sin addClasspath/classpathPrefix: el jar sombreado ya contiene las
+                 dependencias, y un Class-Path apuntando a lib/ las cargaba por
+                 duplicado (dos bindings de SLF4J en el arranque). -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
@@ -113,9 +118,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <addClasspath>true</addClasspath>
                             <mainClass>com.avltree.Main</mainClass>
-                            <classpathPrefix>lib/</classpathPrefix>
                         </manifest>
                     </archive>
                 </configuration>
@@ -154,24 +157,14 @@
                 </executions>
             </plugin>
 
-            <!-- Dependency Plugin -->
+            <!-- Exec Plugin: permite 'mvn exec:java' sin argumentos extra -->
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-dependency-plugin</artifactId>
-                <version>3.6.0</version>
-                <executions>
-                    <execution>
-                        <id>copy-dependencies</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>copy-dependencies</goal>
-                        </goals>
-                        <configuration>
-                            <outputDirectory>${project.build.directory}/lib</outputDirectory>
-                            <includeScope>runtime</includeScope>
-                        </configuration>
-                    </execution>
-                </executions>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>${exec.plugin.version}</version>
+                <configuration>
+                    <mainClass>com.avltree.Main</mainClass>
+                </configuration>
             </plugin>
 
             <!-- Clean Plugin -->

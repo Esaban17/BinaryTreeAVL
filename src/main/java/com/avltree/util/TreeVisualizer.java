@@ -1,131 +1,151 @@
 package com.avltree.util;
 
 import com.avltree.model.Node;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.function.Function;
 
 /**
- * Utilidad genérica para visualizar el árbol AVL en consola
+ * Visualización del árbol AVL en consola.
  */
-public class TreeVisualizer {
-    
+public final class TreeVisualizer {
+
+    private TreeVisualizer() {
+    }
+
     /**
-     * Imprime el árbol en formato jerárquico
+     * Imprime el árbol en formato jerárquico, marcando cada rama como
+     * izquierda (L) o derecha (R).
+     *
+     * @param formatter cómo mostrar el dato de cada nodo
      */
-    public static <T extends Comparable<T>> void printHierarchicalTree(Node<T> root) {
+    public static <T extends Comparable<T>> void printHierarchicalTree(
+            Node<T> root, Function<? super T, String> formatter) {
         if (root == null) {
             System.out.println("El árbol está vacío");
             return;
         }
-        
+
         System.out.println("\n=== ESTRUCTURA JERÁRQUICA ===");
-        printHierarchical(root, "", true);
+        System.out.println("[" + root.toDisplayString(formatter) + "]");
+        printChildren(root, "", formatter);
     }
-    
-    private static <T extends Comparable<T>> void printHierarchical(Node<T> node, String prefix, boolean isLast) {
-        if (node == null) {
-            return;
+
+    private static <T extends Comparable<T>> void printChildren(
+            Node<T> node, String prefix, Function<? super T, String> formatter) {
+        Node<T> left = node.getLeft();
+        Node<T> right = node.getRight();
+
+        if (left != null) {
+            boolean esUltimo = (right == null);
+            printBranch(left, prefix, esUltimo ? "└── L: " : "├── L: ", esUltimo, formatter);
         }
-        
-        System.out.println(prefix + (isLast ? "└── " : "├── ") + 
-                          "[" + node.toDisplayString() + "]");
-        
-        List<Node<T>> children = new ArrayList<>();
-        if (node.getLeft() != null) children.add(node.getLeft());
-        if (node.getRight() != null) children.add(node.getRight());
-        
-        for (int i = 0; i < children.size(); i++) {
-            boolean isLastChild = (i == children.size() - 1);
-            String newPrefix = prefix + (isLast ? "    " : "│   ");
-            
-            if (children.get(i) == node.getLeft()) {
-                System.out.println(newPrefix + (isLastChild && node.getRight() == null ? "└── " : "├── ") + "L:");
-                printHierarchical(node.getLeft(), newPrefix + (isLastChild && node.getRight() == null ? "    " : "│   "), 
-                                node.getRight() == null);
-            } else {
-                System.out.println(newPrefix + "└── R:");
-                printHierarchical(node.getRight(), newPrefix + "    ", true);
-            }
+        if (right != null) {
+            printBranch(right, prefix, "└── R: ", true, formatter);
         }
     }
-    
+
+    private static <T extends Comparable<T>> void printBranch(
+            Node<T> node, String prefix, String conector, boolean esUltimo,
+            Function<? super T, String> formatter) {
+        System.out.println(prefix + conector + "[" + node.toDisplayString(formatter) + "]");
+        printChildren(node, prefix + (esUltimo ? "    " : "│   "), formatter);
+    }
+
     /**
-     * Imprime el árbol de forma simple (recorrido inorder)
+     * Imprime el recorrido inorder en una sola línea.
      */
-    public static <T extends Comparable<T>> void printSimpleTree(Node<T> root) {
+    public static <T extends Comparable<T>> void printSimpleTree(
+            Node<T> root, Function<? super T, String> formatter) {
         if (root == null) {
             System.out.println("El árbol está vacío");
             return;
         }
-        
+
         System.out.println("\n=== RECORRIDO INORDER ===");
-        printInorder(root);
+        printInorder(root, formatter);
         System.out.println();
     }
-    
-    private static <T extends Comparable<T>> void printInorder(Node<T> node) {
+
+    private static <T extends Comparable<T>> void printInorder(
+            Node<T> node, Function<? super T, String> formatter) {
         if (node != null) {
-            printInorder(node.getLeft());
-            System.out.print("[" + node.toDisplayString() + "] ");
-            printInorder(node.getRight());
+            printInorder(node.getLeft(), formatter);
+            System.out.print("[" + node.toDisplayString(formatter) + "] ");
+            printInorder(node.getRight(), formatter);
         }
     }
-    
+
     /**
-     * Imprime información detallada del árbol
+     * Imprime altura, número de nodos, balance y distribución por nivel.
      */
-    public static <T extends Comparable<T>> void printTreeInfo(Node<T> root) {
+    public static <T extends Comparable<T>> void printTreeInfo(
+            Node<T> root, Function<? super T, String> formatter) {
         if (root == null) {
             System.out.println("El árbol está vacío");
             return;
         }
-        
+
         System.out.println("\n=== INFORMACIÓN DEL ÁRBOL ===");
         System.out.println("Altura del árbol: " + getHeight(root));
         System.out.println("Número de nodos: " + countNodes(root));
-        System.out.println("Nodo raíz: [" + root.toDisplayString() + "]");
+        System.out.println("Nodo raíz: [" + root.toDisplayString(formatter) + "]");
         System.out.println("Está balanceado: " + isBalanced(root));
-        
-        // Mostrar estadísticas por nivel
+
         System.out.println("\nNodos por nivel:");
         printLevelStats(root);
     }
-    
+
     private static <T extends Comparable<T>> int getHeight(Node<T> node) {
-        if (node == null) {
-            return 0;
-        }
-        return node.getHeight();
+        return (node == null) ? 0 : node.getHeight();
     }
-    
-    private static <T extends Comparable<T>> int countNodes(Node<T> node) {
+
+    /**
+     * Cuenta los nodos recorriendo la estructura. Sirve como verificación
+     * independiente del contador que mantiene el árbol.
+     */
+    public static <T extends Comparable<T>> int countNodes(Node<T> node) {
         if (node == null) {
             return 0;
         }
         return 1 + countNodes(node.getLeft()) + countNodes(node.getRight());
     }
-    
-    private static <T extends Comparable<T>> boolean isBalanced(Node<T> node) {
-        if (node == null) {
-            return true;
-        }
-        
-        int balance = getHeight(node.getLeft()) - getHeight(node.getRight());
-        
-        return Math.abs(balance) <= 1 && 
-               isBalanced(node.getLeft()) && 
-               isBalanced(node.getRight());
+
+    /**
+     * Verifica la propiedad AVL: factor de balance en [-1, 1] y alturas
+     * almacenadas coherentes con la estructura real.
+     */
+    public static <T extends Comparable<T>> boolean isBalanced(Node<T> node) {
+        return alturaSiEstaBalanceado(node) >= 0;
     }
-    
+
+    private static <T extends Comparable<T>> int alturaSiEstaBalanceado(Node<T> node) {
+        if (node == null) {
+            return 0;
+        }
+
+        int izquierda = alturaSiEstaBalanceado(node.getLeft());
+        if (izquierda < 0) {
+            return -1;
+        }
+        int derecha = alturaSiEstaBalanceado(node.getRight());
+        if (derecha < 0) {
+            return -1;
+        }
+
+        if (Math.abs(izquierda - derecha) > 1) {
+            return -1;
+        }
+
+        int alturaReal = 1 + Math.max(izquierda, derecha);
+        return (node.getHeight() == alturaReal) ? alturaReal : -1;
+    }
+
     private static <T extends Comparable<T>> void printLevelStats(Node<T> root) {
         int height = getHeight(root);
-        for (int i = 1; i <= height; i++) {
-            int nodesAtLevel = countNodesAtLevel(root, i);
-            System.out.println("Nivel " + i + ": " + nodesAtLevel + " nodos");
+        for (int nivel = 1; nivel <= height; nivel++) {
+            System.out.println("Nivel " + nivel + ": " + countNodesAtLevel(root, nivel) + " nodos");
         }
     }
-    
+
     private static <T extends Comparable<T>> int countNodesAtLevel(Node<T> node, int level) {
         if (node == null) {
             return 0;
@@ -133,14 +153,14 @@ public class TreeVisualizer {
         if (level == 1) {
             return 1;
         }
-        return countNodesAtLevel(node.getLeft(), level - 1) + 
-               countNodesAtLevel(node.getRight(), level - 1);
+        return countNodesAtLevel(node.getLeft(), level - 1)
+                + countNodesAtLevel(node.getRight(), level - 1);
     }
-    
+
     /**
-     * Muestra un menú de opciones de visualización
+     * Muestra el menú de opciones de visualización.
      */
-    public static <T extends Comparable<T>> void showVisualizationMenu(Node<T> root) {
+    public static void showVisualizationMenu() {
         System.out.println("\n=== OPCIONES DE VISUALIZACIÓN ===");
         System.out.println("1. Estructura jerárquica");
         System.out.println("2. Recorrido inorder");
@@ -148,25 +168,32 @@ public class TreeVisualizer {
         System.out.println("4. Todas las visualizaciones");
         System.out.println("0. Regresar al menú principal");
     }
-    
-    public static <T extends Comparable<T>> void executeVisualization(Node<T> root, int option) {
+
+    /**
+     * Ejecuta la visualización elegida.
+     *
+     * @return false si la opción no es válida
+     */
+    public static <T extends Comparable<T>> boolean executeVisualization(
+            Node<T> root, int option, Function<? super T, String> formatter) {
         switch (option) {
             case 1:
-                printHierarchicalTree(root);
-                break;
+                printHierarchicalTree(root, formatter);
+                return true;
             case 2:
-                printSimpleTree(root);
-                break;
+                printSimpleTree(root, formatter);
+                return true;
             case 3:
-                printTreeInfo(root);
-                break;
+                printTreeInfo(root, formatter);
+                return true;
             case 4:
-                printHierarchicalTree(root);
-                printSimpleTree(root);
-                printTreeInfo(root);
-                break;
+                printHierarchicalTree(root, formatter);
+                printSimpleTree(root, formatter);
+                printTreeInfo(root, formatter);
+                return true;
             default:
-                System.out.println("Opción no válida");
+                System.out.println("❌ Opción no válida");
+                return false;
         }
     }
 }

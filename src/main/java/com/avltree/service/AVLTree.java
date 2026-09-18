@@ -5,275 +5,247 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Implementación genérica de un árbol AVL (Árbol Balanceado de Adelson-Velsky y Landis)
+ * Implementación genérica de un árbol AVL (Adelson-Velsky y Landis).
+ *
+ * <p>El árbol se comporta como un conjunto ordenado: dos datos que comparan
+ * igual ({@code compareTo == 0}) ocupan el mismo nodo.
+ *
  * @param <T> tipo de dato que debe implementar Comparable
  */
 public class AVLTree<T extends Comparable<T>> {
+
+    /** Resultado de una operación {@link #update(Comparable, Comparable)}. */
+    public enum UpdateResult {
+        /** El dato se actualizó correctamente. */
+        UPDATED,
+        /** No existe ningún nodo que compare igual a {@code oldData}. */
+        NOT_FOUND,
+        /** La nueva clave ya pertenece a otro nodo del árbol. */
+        KEY_CONFLICT
+    }
+
     private Node<T> root;
-    
+    private int size;
+
     public AVLTree() {
         this.root = null;
+        this.size = 0;
     }
-    
+
     public Node<T> getRoot() {
         return root;
     }
-    
+
+    /**
+     * Reemplaza la raíz del árbol. Recalcula el tamaño recorriendo la nueva
+     * estructura, de modo que {@link #size()} siga siendo coherente.
+     */
     public void setRoot(Node<T> root) {
         this.root = root;
+        this.size = countNodes(root);
     }
-    
-    /**
-     * Obtiene la altura de un nodo
-     */
+
     private int getHeight(Node<T> node) {
-        if (node == null) {
-            return 0;
-        }
-        return node.getHeight();
+        return (node == null) ? 0 : node.getHeight();
     }
-    
-    /**
-     * Calcula el factor de balance de un nodo
-     */
+
     private int getBalance(Node<T> node) {
-        if (node == null) {
-            return 0;
-        }
-        return getHeight(node.getLeft()) - getHeight(node.getRight());
+        return (node == null) ? 0 : getHeight(node.getLeft()) - getHeight(node.getRight());
     }
-    
-    /**
-     * Actualiza la altura de un nodo
-     */
+
     private void updateHeight(Node<T> node) {
         if (node != null) {
             node.setHeight(1 + Math.max(getHeight(node.getLeft()), getHeight(node.getRight())));
         }
     }
-    
-    /**
-     * Rotación a la derecha
-     */
+
     private Node<T> rotateRight(Node<T> y) {
         Node<T> x = y.getLeft();
-        Node<T> T2 = x.getRight();
-        
-        // Realizar rotación
+        Node<T> subarbolMedio = x.getRight();
+
         x.setRight(y);
-        y.setLeft(T2);
-        
-        // Actualizar alturas
+        y.setLeft(subarbolMedio);
+
         updateHeight(y);
         updateHeight(x);
-        
         return x;
     }
-    
-    /**
-     * Rotación a la izquierda
-     */
+
     private Node<T> rotateLeft(Node<T> x) {
         Node<T> y = x.getRight();
-        Node<T> T2 = y.getLeft();
-        
-        // Realizar rotación
+        Node<T> subarbolMedio = y.getLeft();
+
         y.setLeft(x);
-        x.setRight(T2);
-        
-        // Actualizar alturas
+        x.setRight(subarbolMedio);
+
         updateHeight(x);
         updateHeight(y);
-        
         return y;
     }
-    
+
     /**
-     * Inserta un nuevo elemento en el árbol
+     * Actualiza la altura del nodo y aplica la rotación que corresponda.
+     * Es el único punto del árbol que decide rotaciones, tanto en inserción
+     * como en eliminación, y siempre en función del factor de balance.
      */
-    public void insert(T data) {
-        root = insertNode(root, data);
+    private Node<T> rebalance(Node<T> node) {
+        updateHeight(node);
+        int balance = getBalance(node);
+
+        if (balance > 1) {
+            // Pesado a la izquierda: caso izquierda-derecha o izquierda-izquierda
+            if (getBalance(node.getLeft()) < 0) {
+                node.setLeft(rotateLeft(node.getLeft()));
+            }
+            return rotateRight(node);
+        }
+
+        if (balance < -1) {
+            // Pesado a la derecha: caso derecha-izquierda o derecha-derecha
+            if (getBalance(node.getRight()) > 0) {
+                node.setRight(rotateRight(node.getRight()));
+            }
+            return rotateLeft(node);
+        }
+
+        return node;
     }
-    
+
+    /**
+     * Inserta un dato en el árbol. Si ya existe un nodo con la misma clave,
+     * ese nodo se actualiza en vez de crearse uno nuevo.
+     *
+     * @return true si se agregó un nodo nuevo, false si se actualizó uno existente
+     */
+    public boolean insert(T data) {
+        requireData(data);
+        int antes = size;
+        root = insertNode(root, data);
+        return size > antes;
+    }
+
     private Node<T> insertNode(Node<T> node, T data) {
-        // 1. Inserción normal de BST
         if (node == null) {
+            size++;
             return new Node<>(data);
         }
-        
+
         int comparison = data.compareTo(node.getData());
-        
+
         if (comparison < 0) {
             node.setLeft(insertNode(node.getLeft(), data));
         } else if (comparison > 0) {
             node.setRight(insertNode(node.getRight(), data));
         } else {
-            // Los datos duplicados no están permitidos (actualizar)
+            // Clave duplicada: se actualiza el contenido, la estructura no cambia
             node.setData(data);
             return node;
         }
-        
-        // 2. Actualizar altura del nodo ancestro
-        updateHeight(node);
-        
-        // 3. Obtener el factor de balance
-        int balance = getBalance(node);
-        
-        // 4. Si el nodo está desbalanceado, hay 4 casos
-        
-        // Caso Izquierda Izquierda
-        if (balance > 1 && data.compareTo(node.getLeft().getData()) < 0) {
-            return rotateRight(node);
-        }
-        
-        // Caso Derecha Derecha
-        if (balance < -1 && data.compareTo(node.getRight().getData()) > 0) {
-            return rotateLeft(node);
-        }
-        
-        // Caso Izquierda Derecha
-        if (balance > 1 && data.compareTo(node.getLeft().getData()) > 0) {
-            node.setLeft(rotateLeft(node.getLeft()));
-            return rotateRight(node);
-        }
-        
-        // Caso Derecha Izquierda
-        if (balance < -1 && data.compareTo(node.getRight().getData()) < 0) {
-            node.setRight(rotateRight(node.getRight()));
-            return rotateLeft(node);
-        }
-        
-        return node;
+
+        return rebalance(node);
     }
-    
+
     /**
-     * Busca un elemento en el árbol
+     * Busca el nodo cuya clave compara igual al dato recibido.
+     *
+     * @return el nodo encontrado, o null si no existe
      */
     public Node<T> search(T data) {
-        return searchNode(root, data);
-    }
-    
-    private Node<T> searchNode(Node<T> node, T data) {
-        if (node == null || data.compareTo(node.getData()) == 0) {
-            return node;
+        if (data == null) {
+            return null;
         }
-        
-        if (data.compareTo(node.getData()) < 0) {
-            return searchNode(node.getLeft(), data);
-        } else {
-            return searchNode(node.getRight(), data);
+        Node<T> current = root;
+        while (current != null) {
+            int comparison = data.compareTo(current.getData());
+            if (comparison == 0) {
+                return current;
+            }
+            current = (comparison < 0) ? current.getLeft() : current.getRight();
         }
+        return null;
     }
-    
+
     /**
-     * Actualiza un elemento en el árbol
+     * @return true si el árbol contiene un nodo con esa clave
      */
-    public boolean update(T oldData, T newData) {
+    public boolean contains(T data) {
+        return search(data) != null;
+    }
+
+    /**
+     * Actualiza el dato asociado a {@code oldData}.
+     *
+     * <p>Si la clave no cambia, se reemplaza el contenido del nodo. Si la clave
+     * cambia, se elimina el nodo viejo y se inserta el nuevo, salvo que la nueva
+     * clave ya pertenezca a otro nodo: en ese caso no se modifica nada y se
+     * devuelve {@link UpdateResult#KEY_CONFLICT}, para no destruir ese registro.
+     */
+    public UpdateResult update(T oldData, T newData) {
+        requireData(newData);
         Node<T> node = search(oldData);
-        if (node != null) {
-            // Si la clave de comparación es la misma, solo actualizar
-            if (oldData.compareTo(newData) == 0) {
-                node.setData(newData);
-                return true;
-            } else {
-                // Si la clave cambió, eliminar el viejo e insertar el nuevo
-                delete(oldData);
-                insert(newData);
-                return true;
-            }
+        if (node == null) {
+            return UpdateResult.NOT_FOUND;
         }
-        return false;
+
+        if (oldData.compareTo(newData) == 0) {
+            node.setData(newData);
+            return UpdateResult.UPDATED;
+        }
+
+        if (contains(newData)) {
+            return UpdateResult.KEY_CONFLICT;
+        }
+
+        delete(oldData);
+        insert(newData);
+        return UpdateResult.UPDATED;
     }
-    
+
     /**
-     * Elimina un elemento del árbol
+     * Elimina del árbol el nodo cuya clave compara igual al dato recibido.
+     *
+     * @return true si se eliminó un nodo, false si no existía
      */
-    public void delete(T data) {
+    public boolean delete(T data) {
+        if (data == null) {
+            return false;
+        }
+        int antes = size;
         root = deleteNode(root, data);
+        return size < antes;
     }
-    
-    private Node<T> deleteNode(Node<T> root, T data) {
-        // 1. Eliminación normal de BST
-        if (root == null) {
-            return root;
+
+    private Node<T> deleteNode(Node<T> node, T data) {
+        if (node == null) {
+            return null;
         }
-        
-        int comparison = data.compareTo(root.getData());
-        
+
+        int comparison = data.compareTo(node.getData());
+
         if (comparison < 0) {
-            root.setLeft(deleteNode(root.getLeft(), data));
+            node.setLeft(deleteNode(node.getLeft(), data));
         } else if (comparison > 0) {
-            root.setRight(deleteNode(root.getRight(), data));
-        } else {
-            // Nodo con una sola hoja o sin hijos
-            if ((root.getLeft() == null) || (root.getRight() == null)) {
-                Node<T> temp = null;
-                if (temp == root.getLeft()) {
-                    temp = root.getRight();
-                } else {
-                    temp = root.getLeft();
-                }
-                
-                // Sin hijos
-                if (temp == null) {
-                    temp = root;
-                    root = null;
-                } else {
-                    // Un hijo
-                    root = temp;
-                }
-            } else {
-                // Nodo con dos hijos: obtener el sucesor inorder
-                Node<T> temp = minValueNode(root.getRight());
-                
-                // Copiar los datos del sucesor inorder a este nodo
-                root.setData(temp.getData());
-                
-                // Eliminar el sucesor inorder
-                root.setRight(deleteNode(root.getRight(), temp.getData()));
+            node.setRight(deleteNode(node.getRight(), data));
+        } else if (node.getLeft() == null || node.getRight() == null) {
+            // Cero o un hijo: el nodo se sustituye por ese hijo (o desaparece)
+            size--;
+            Node<T> hijo = (node.getLeft() != null) ? node.getLeft() : node.getRight();
+            if (hijo == null) {
+                return null;
             }
+            node = hijo;
+        } else {
+            // Dos hijos: se copia el sucesor inorder y se elimina el sucesor
+            Node<T> sucesor = minValueNode(node.getRight());
+            node.setData(sucesor.getData());
+            node.setRight(deleteNode(node.getRight(), sucesor.getData()));
         }
-        
-        // Si el árbol tenía solo un nodo, retornar
-        if (root == null) {
-            return root;
-        }
-        
-        // 2. Actualizar altura del nodo actual
-        updateHeight(root);
-        
-        // 3. Obtener el factor de balance
-        int balance = getBalance(root);
-        
-        // 4. Si el nodo está desbalanceado, hay 4 casos
-        
-        // Caso Izquierda Izquierda
-        if (balance > 1 && getBalance(root.getLeft()) >= 0) {
-            return rotateRight(root);
-        }
-        
-        // Caso Izquierda Derecha
-        if (balance > 1 && getBalance(root.getLeft()) < 0) {
-            root.setLeft(rotateLeft(root.getLeft()));
-            return rotateRight(root);
-        }
-        
-        // Caso Derecha Derecha
-        if (balance < -1 && getBalance(root.getRight()) <= 0) {
-            return rotateLeft(root);
-        }
-        
-        // Caso Derecha Izquierda
-        if (balance < -1 && getBalance(root.getRight()) > 0) {
-            root.setRight(rotateRight(root.getRight()));
-            return rotateLeft(root);
-        }
-        
-        return root;
+
+        return rebalance(node);
     }
-    
+
     /**
-     * Encuentra el nodo con el valor mínimo
+     * Encuentra el nodo con el valor mínimo del subárbol.
      */
     private Node<T> minValueNode(Node<T> node) {
         Node<T> current = node;
@@ -282,16 +254,16 @@ public class AVLTree<T extends Comparable<T>> {
         }
         return current;
     }
-    
+
     /**
-     * Recorrido inorder del árbol
+     * Recorrido inorder: devuelve los nodos ordenados por clave.
      */
     public List<Node<T>> inorderTraversal() {
-        List<Node<T>> result = new ArrayList<>();
+        List<Node<T>> result = new ArrayList<>(size);
         inorderTraversalHelper(root, result);
         return result;
     }
-    
+
     private void inorderTraversalHelper(Node<T> node, List<Node<T>> result) {
         if (node != null) {
             inorderTraversalHelper(node.getLeft(), result);
@@ -299,25 +271,54 @@ public class AVLTree<T extends Comparable<T>> {
             inorderTraversalHelper(node.getRight(), result);
         }
     }
-    
+
     /**
-     * Verifica si el árbol está vacío
+     * Devuelve los datos ordenados por clave.
      */
+    public List<T> toSortedList() {
+        List<T> result = new ArrayList<>(size);
+        for (Node<T> node : inorderTraversal()) {
+            result.add(node.getData());
+        }
+        return result;
+    }
+
     public boolean isEmpty() {
         return root == null;
     }
-    
+
     /**
-     * Obtiene el número total de nodos en el árbol
+     * Número total de nodos. O(1): se mantiene incrementalmente.
      */
     public int size() {
-        return sizeHelper(root);
+        return size;
     }
-    
-    private int sizeHelper(Node<T> node) {
+
+    /**
+     * Altura del árbol; 0 si está vacío.
+     */
+    public int height() {
+        return getHeight(root);
+    }
+
+    /**
+     * Elimina todos los nodos del árbol.
+     */
+    public void clear() {
+        root = null;
+        size = 0;
+    }
+
+    private int countNodes(Node<T> node) {
         if (node == null) {
             return 0;
         }
-        return 1 + sizeHelper(node.getLeft()) + sizeHelper(node.getRight());
+        return 1 + countNodes(node.getLeft()) + countNodes(node.getRight());
+    }
+
+    private void requireData(T data) {
+        if (data == null) {
+            throw new IllegalArgumentException("El árbol AVL no admite datos null");
+        }
     }
 }

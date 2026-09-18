@@ -1,161 +1,187 @@
 package com.avltree.service;
 
 import com.avltree.util.EnvLoader;
+import com.mongodb.ConnectionString;
+import com.mongodb.MongoClientSettings;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import org.bson.Document;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.concurrent.TimeUnit;
 
 /**
- * Clase para manejar la conexión con MongoDB Atlas
+ * Conexión con MongoDB Atlas.
+ *
+ * <p>Singleton implementado con el modismo del holder estático, que el
+ * cargador de clases hace seguro entre hilos sin sincronización explícita.
  */
 public class MongoDBConnection {
-    private static MongoDBConnection instance;
+
+    private static final Logger log = LoggerFactory.getLogger(MongoDBConnection.class);
+
+    private static final int TIMEOUT_POR_DEFECTO_MS = 10_000;
+
     private MongoClient mongoClient;
     private MongoDatabase database;
     private MongoCollection<Document> collection;
-    private boolean connected = false;
-    
+    private volatile boolean connected;
+
     private MongoDBConnection() {
-        // No conectar automáticamente en el constructor
-        // La conexión se hace de forma explícita
+        // La conexión se establece de forma explícita, no en el constructor.
     }
-    
-    /**
-     * Patrón Singleton para obtener la instancia única de la conexión
-     */
+
+    private static final class Holder {
+        private static final MongoDBConnection INSTANCE = new MongoDBConnection();
+    }
+
     public static MongoDBConnection getInstance() {
-        if (instance == null) {
-            instance = new MongoDBConnection();
-        }
-        return instance;
+        return Holder.INSTANCE;
     }
-    
+
     /**
-     * Establece la conexión con MongoDB Atlas
+     * Establece la conexión con MongoDB Atlas.
+     *
+     * @throws IllegalStateException si falta configuración o el servidor no responde
      */
-    private void connect() {
+    private synchronized void connect() {
+        String mongoUri = EnvLoader.getEnv("MONGODB_URI");
+        if (mongoUri == null || mongoUri.trim().isEmpty()) {
+            throw new IllegalStateException(
+                    "MONGODB_URI no está definida. Configúrala en el archivo .env o como variable de entorno.");
+        }
+
+        String databaseName = EnvLoader.getEnv("DATABASE_NAME", "avltree");
+        String collectionName = EnvLoader.getEnv("COLLECTION_NAME", "nodes");
+        int connectTimeout = EnvLoader.getEnvAsInt("CONNECTION_TIMEOUT", TIMEOUT_POR_DEFECTO_MS);
+        int socketTimeout = EnvLoader.getEnvAsInt("SOCKET_TIMEOUT", TIMEOUT_POR_DEFECTO_MS);
+
         try {
-            // Cargar variables de entorno
-            EnvLoader.loadEnv();
-            
-            String mongoUri = EnvLoader.getEnv("MONGODB_URI");
-            String databaseName = EnvLoader.getEnv("DATABASE_NAME", "avltree");
-            String collectionName = EnvLoader.getEnv("COLLECTION_NAME", "nodes");
-            
-            if (mongoUri == null) {
-                throw new RuntimeException("MONGODB_URI no está definida en el archivo .env");
-            }
-            
-            // Crear conexión
-            mongoClient = MongoClients.create(mongoUri);
+            MongoClientSettings settings = MongoClientSettings.builder()
+                    .applyConnectionString(new ConnectionString(mongoUri))
+                    .applyToSocketSettings(b -> b
+                            .connectTimeout(connectTimeout, TimeUnit.MILLISECONDS)
+                            .readTimeout(socketTimeout, TimeUnit.MILLISECONDS))
+                    .applyToClusterSettings(b -> b
+                            .serverSelectionTimeout(connectTimeout, TimeUnit.MILLISECONDS))
+                    .build();
+
+            mongoClient = MongoClients.create(settings);
             database = mongoClient.getDatabase(databaseName);
             collection = database.getCollection(collectionName);
-            
-            // Verificar conexión
+
             database.runCommand(new Document("ping", 1));
             connected = true;
-            
-            System.out.println("✓ Conexión exitosa con MongoDB Atlas");
-            System.out.println("✓ Base de datos: " + databaseName);
-            System.out.println("✓ Colección: " + collectionName);
-            
+
+            log.info("Conexión establecida con MongoDB (base de datos '{}', colección '{}')",
+                    databaseName, collectionName);
+
         } catch (Exception e) {
             connected = false;
-            System.err.println("❌ Error al conectar con MongoDB: " + e.getMessage());
-            System.err.println("Verifique las credenciales en el archivo .env");
-            throw new RuntimeException("No se pudo establecer conexión con MongoDB", e);
+            closeQuietly();
+            throw new IllegalStateException("No se pudo establecer conexión con MongoDB: " + e.getMessage(), e);
         }
     }
-    
+
     /**
-     * Obtiene la colección de MongoDB
+     * Intenta conectar si aún no hay conexión y verifica que el servidor responda.
+     *
+     * @return true si la conexión está viva
      */
-    public MongoCollection<Document> getCollection() {
-        return collection;
-    }
-    
-    /**
-     * Obtiene la base de datos de MongoDB
-     */
-    public MongoDatabase getDatabase() {
-        return database;
-    }
-    
-    /**
-     * Obtiene el cliente de MongoDB
-     */
-    public MongoClient getMongoClient() {
-        return mongoClient;
-    }
-    
-    /**
-     * Verifica si la conexión está activa
-     */
-    public boolean isConnected() {
+    public synchronized boolean isConnected() {
         try {
-            // Si no se ha intentado conectar, hacerlo ahora
-            if (!connected && database == null) {
+            if (database == null) {
                 connect();
             }
-            
-            if (database != null) {
-                database.runCommand(new Document("ping", 1));
-                connected = true;
-                return true;
-            }
+            database.runCommand(new Document("ping", 1));
+            connected = true;
+            return true;
         } catch (Exception e) {
             connected = false;
-            System.err.println("Conexión perdida con MongoDB: " + e.getMessage());
+            log.warn("MongoDB no responde: {}", e.getMessage());
+            return false;
         }
-        return false;
     }
-    
+
     /**
-     * Reconecta a MongoDB en caso de pérdida de conexión
+     * Motivo del último fallo de conexión, o null si nunca falló.
      */
-    public void reconnect() {
-        try {
-            if (mongoClient != null) {
-                mongoClient.close();
-            }
+    public synchronized String describeLastFailure() {
+        return connected ? null : "sin conexión activa con MongoDB";
+    }
+
+    public synchronized MongoCollection<Document> getCollection() {
+        if (collection == null) {
             connect();
-        } catch (Exception e) {
-            System.err.println("Error al reconectar con MongoDB: " + e.getMessage());
-            throw new RuntimeException("No se pudo reconectar con MongoDB", e);
+        }
+        return collection;
+    }
+
+    public synchronized MongoDatabase getDatabase() {
+        if (database == null) {
+            connect();
+        }
+        return database;
+    }
+
+    public synchronized MongoClient getMongoClient() {
+        return mongoClient;
+    }
+
+    /**
+     * Cierra la conexión actual y abre una nueva.
+     */
+    public synchronized void reconnect() {
+        closeQuietly();
+        connect();
+    }
+
+    /**
+     * Cierra la conexión con MongoDB. Es idempotente.
+     */
+    public synchronized void close() {
+        if (mongoClient != null) {
+            closeQuietly();
+            log.info("Conexión con MongoDB cerrada correctamente");
         }
     }
-    
-    /**
-     * Cierra la conexión con MongoDB
-     */
-    public void close() {
-        try {
-            if (mongoClient != null) {
+
+    private void closeQuietly() {
+        if (mongoClient != null) {
+            try {
                 mongoClient.close();
-                System.out.println("Conexión con MongoDB cerrada correctamente");
+            } catch (Exception e) {
+                log.warn("Error al cerrar el cliente de MongoDB: {}", e.getMessage());
             }
+        }
+        mongoClient = null;
+        database = null;
+        collection = null;
+        connected = false;
+    }
+
+    /**
+     * Estadísticas de la base de datos, o null si no se pudieron obtener.
+     */
+    public synchronized Document getDatabaseStats() {
+        try {
+            if (database == null) {
+                return null;
+            }
+            return database.runCommand(new Document("dbStats", 1));
         } catch (Exception e) {
-            System.err.println("Error al cerrar la conexión con MongoDB: " + e.getMessage());
+            log.error("Error al obtener estadísticas de la base de datos", e);
+            return null;
         }
     }
-    
+
     /**
-     * Obtiene estadísticas de la conexión
+     * Nombre de la base de datos en uso, o null si aún no hay conexión.
      */
-    public void printConnectionStats() {
-        try {
-            if (database != null) {
-                Document stats = database.runCommand(new Document("dbStats", 1));
-                System.out.println("\n=== ESTADÍSTICAS DE LA BASE DE DATOS ===");
-                System.out.println("Nombre: " + database.getName());
-                System.out.println("Colecciones: " + stats.getInteger("collections"));
-                System.out.println("Documentos: " + collection.countDocuments());
-                System.out.println("Tamaño de datos: " + stats.get("dataSize") + " bytes");
-            }
-        } catch (Exception e) {
-            System.err.println("Error al obtener estadísticas: " + e.getMessage());
-        }
+    public synchronized String getDatabaseName() {
+        return (database == null) ? null : database.getName();
     }
 }
